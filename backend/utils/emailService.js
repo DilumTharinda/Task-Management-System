@@ -192,12 +192,104 @@ const sendFinalWarningEmail = async (toEmail, userName, task) => {
   await transporter.sendMail(mailOptions);
 };
 
+// Security notification email sent when user changes their own password
+const sendPasswordChangedEmail = async (toEmail, name) => {
+  const mailOptions = {
+    from: `"TMS System" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Your TMS Password Has Been Changed',
+    text: `Hello ${name}, your password was recently changed.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px;">
+        <h2>Password Changed Successfully</h2>
+        <p>Hello <strong>${name}</strong>,</p>
+        <p>Your Task Management System password was successfully changed.</p>
+        <div style="background:#fff3cd; padding:16px; border-radius:8px; margin:16px 0;">
+          <p><strong>Time of change:</strong> ${new Date().toLocaleString()}</p>
+        </div>
+        <p style="color:red;"><strong>If you did not make this change, please contact 
+        your Administrator immediately.</strong></p>
+      </div>
+    `
+  };
+  await transporter.sendMail(mailOptions);
+};
+
+// Email 1 — sent when user requests password reset
+// Contains the clickable reset link
+const sendPasswordResetLinkEmail = async (toEmail, name, resetLink) => {
+  const mailOptions = {
+    from: `"TMS System" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Reset Your TMS Password',
+    text: `Hello ${name}, click this link to reset your password: ${resetLink}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px;">
+        <h2>Password Reset Request</h2>
+        <p>Hello <strong>${name}</strong>,</p>
+        <p>We received a request to reset your Task Management System password.</p>
+        <p>Click the button below to reset your password. 
+        This link will expire in <strong>15 minutes</strong>.</p>
+        <div style="text-align:center; margin:24px 0;">
+          <a href="${resetLink}" 
+             style="background:#0078d4; color:#ffffff; padding:12px 24px; 
+                    border-radius:6px; text-decoration:none; font-size:16px;">
+            Reset My Password
+          </a>
+        </div>
+        <p style="color:#666; font-size:13px;">
+          If the button does not work, copy and paste this link into your browser:
+        </p>
+        <p style="color:#666; font-size:13px; word-break:break-all;">
+          ${resetLink}
+        </p>
+        <p style="color:red;"><strong>If you did not request a password reset, 
+        please ignore this email. Your password will not change.</strong></p>
+        <p style="color:#666; font-size:12px;">
+          This link expires at ${new Date(Date.now() + 15*60*1000).toLocaleString()}
+        </p>
+      </div>
+    `
+  };
+  await transporter.sendMail(mailOptions);
+};
+
+// Email 2 — sent after password reset is completed successfully
+const sendPasswordResetSuccessEmail = async (toEmail, name) => {
+  const mailOptions = {
+    from: `"TMS System" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Your TMS Password Has Been Reset Successfully',
+    text: `Hello ${name}, your password has been reset successfully.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px;">
+        <h2>Password Reset Successful</h2>
+        <p>Hello <strong>${name}</strong>,</p>
+        <p>Your Task Management System password has been 
+        <strong>successfully reset</strong>.</p>
+        <div style="background:#d4edda; padding:16px; border-radius:8px; margin:16px 0;">
+          <p><strong>Time of reset:</strong> ${new Date().toLocaleString()}</p>
+        </div>
+        <p>You can now log in using your new password.</p>
+        <p style="color:red;">
+          <strong>If you did not reset your password, contact your 
+          Administrator immediately.</strong>
+        </p>
+      </div>
+    `
+  };
+  await transporter.sendMail(mailOptions);
+};
+
 module.exports = {
   sendWelcomeEmail,
+  sendPasswordChangedEmail,
   sendAccountUpdateEmail,
   sendAccountDeletedEmail,
   sendTaskAssignmentEmail,
   sendDeadlineReminderEmail,
   sendUrgentReminderEmail,
-  sendFinalWarningEmail
+  sendFinalWarningEmail,
+  sendPasswordResetLinkEmail,     
+  sendPasswordResetSuccessEmail    
 };

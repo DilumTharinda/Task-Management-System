@@ -50,7 +50,21 @@ const User = sequelize.define('User', {
   mustChangePassword: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
-  }
+  },
+
+  // Stores the unique reset token when user requests password reset
+  resetToken: {
+  type: DataTypes.STRING,
+  allowNull: true,
+  defaultValue: null
+},
+
+// Stores when the reset token expires — token is only valid for 15 minutes
+  resetTokenExpiry: {
+  type: DataTypes.DATE,
+  allowNull: true,
+  defaultValue: null
+}
 
 }, {
   timestamps: true // Automatically adds createdAt and updatedAt columns
