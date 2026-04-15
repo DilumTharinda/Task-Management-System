@@ -6,6 +6,8 @@ const sequelize = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const taskRoutes = require('./routes/taskRoutes');
+const commentRoutes = require('./routes/commentRoutes');
+const attachmentRoutes = require('./routes/attachmentRoutes');
 
 const app = express();
 
@@ -19,6 +21,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/comments', commentRoutes);
+app.use('/api/attachments', attachmentRoutes);
 
 // Health check
 app.get('/', (req, res) => {
@@ -32,6 +36,8 @@ sequelize.authenticate()
     console.log('Connected to Azure MySQL!');
     require('./models/User');
     require('./models/Task');
+    require('./models/Comment');
+    require('./models/Attachment');
     // force: false means never drop tables
     // alter: false means stop adding duplicate indexes
     return sequelize.sync({ force: false });
