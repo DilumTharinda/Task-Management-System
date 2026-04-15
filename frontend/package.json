@@ -1,18 +1,33 @@
 {
-  "name": "frontend",
+  "name": "tms_frontend",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
+  "description": "Frontend for university web application project",
   "type": "module",
+
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint ."
   },
+
+  "engines": {
+    "node": ">=24.14.1",
+    "npm": ">=10.0.0"
+  },
+
+  "keywords": [],
+  "author": "Group 10",
+  "license": "ISC",
+
   "dependencies": {
+    "axios": "^1.15.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.14.1"
   },
+
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@types/react": "^19.2.14",

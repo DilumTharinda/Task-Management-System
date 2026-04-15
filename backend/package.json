@@ -1,14 +1,22 @@
 {
-  "name": "backend",
+  "name": "tms_backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "University team project for web application development course",
+  "main": "server.js",
+
   "scripts": {
     "start": "nodemon server.js"
   },
+
+  "engines": {
+    "node": ">=24.14.1",
+    "npm": ">=10.0.0"
+  },
+
   "keywords": [],
-  "author": "",
+  "author": "Group 10",
   "license": "ISC",
-  "description": "",
+
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
@@ -19,7 +27,10 @@
     "mysql2": "^3.21.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.5",
-    "nodemon": "^3.1.14",
     "sequelize": "^6.37.8"
+  },
+
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

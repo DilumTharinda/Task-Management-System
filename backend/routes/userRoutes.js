@@ -7,13 +7,20 @@ const {
   updateUser,
   deactivateUser,
   activateUser,
-  deleteUser 
+  deleteUser,
+  getTeamMembers  
 } = require('../controllers/userController.js');
 
 const { verifyToken, requireRole } = require('../middleware/authMiddleware.js');
 
 // All routes below are protected - need valid JWT and Admin role
 // verifyToken runs first, then requireRole checks Admin, then the function runs
+
+// GET /api/users/team — Project Manager views non-admin users
+// Must be placed BEFORE /:id route otherwise Express reads
+// "team" as an ID parameter
+router.get('/team', verifyToken, requireRole('Admin', 'ProjectManager'), getTeamMembers);
+
 
 // GET /api/users - get all users with optional search and filter
 router.get('/', verifyToken, requireRole('Admin'), getAllUsers);

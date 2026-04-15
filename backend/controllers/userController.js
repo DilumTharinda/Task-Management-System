@@ -446,11 +446,73 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// ── PROJECT MANAGER VIEW USERS ─────────────────────────
+// GET /api/users/team
+// Project Manager can view all non-admin users
+// Read only - cannot create, update, or delete
+const getTeamMembers = async (req, res) => {
+  try {
+    const { search, role } = req.query;
+
+    const whereCondition = {
+      // Never show Admin accounts to Project Manager
+      role: { [Op.in]: ['ProjectManager', 'Collaborator'] },
+      // Only show active users
+      isActive: true
+    };
+
+    // Search by name or email
+    if (search) {
+      whereCondition[Op.and] = [{
+        [Op.or]: [
+          { name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } }
+        ]
+      }];
+    }
+
+    // Filter by specific role
+    if (role) {
+      const allowedRoles = ['ProjectManager', 'Collaborator'];
+      if (!allowedRoles.includes(role)) {
+        return res.status(400).json({
+          errorCode: 400,
+          message: 'Bad Request',
+          description: 'Role filter must be ProjectManager or Collaborator'
+        });
+      }
+      whereCondition.role = role;
+    }
+
+    const users = await User.findAll({
+      where: whereCondition,
+      // Never return password
+      attributes: { exclude: ['password', 'resetToken', 'resetTokenExpiry'] },
+      order: [['name', 'ASC']]
+    });
+
+    return res.status(200).json({
+      message: 'Team members fetched successfully',
+      count: users.length,
+      users
+    });
+
+  } catch (error) {
+    console.error('Get team members error:', error);
+    return res.status(500).json({
+      errorCode: 500,
+      message: 'Internal Server Error',
+      description: 'Something went wrong on the server'
+    });
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserById,
   updateUser,
   deactivateUser,
   activateUser,
-  deleteUser
+  deleteUser,
+  getTeamMembers 
 };
