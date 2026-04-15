@@ -3,13 +3,8 @@ backend/node_modules/
 backend/.env
 backend/dist/
 backend/npm-debug.log*
-uploads/*
 backend/uploads/*
-
-!uploads/tasks/
-!uploads/tasks/.gitkeep
-!backend/uploads/tasks/
-!backend/uploads/tasks/.gitkeep
+!backend/uploads/.gitkeep
 
 # --- Frontend ---
 frontend/node_modules/
