@@ -1,8 +1,7 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db.js');
-const User = require('./User.js');
+const sequelize = require('../config/db');
+const User = require('./User');
 
-// This creates the Tasks table in the database
 const Task = sequelize.define('Task', {
 
   id: {
@@ -11,51 +10,33 @@ const Task = sequelize.define('Task', {
     primaryKey: true
   },
 
-  // Task title is mandatory
   title: {
     type: DataTypes.STRING,
     allowNull: false
   },
 
-  // Optional longer description of the task
   description: {
     type: DataTypes.TEXT,
     allowNull: true
   },
 
-  // Who this task is assigned to - links to Users table
-  assignedTo: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: User,
-      key: 'id'
-    }
-  },
-
-  // Who created this task - links to Users table
+  // Who created this task
   createdBy: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: {
-      model: User,
-      key: 'id'
-    }
+    references: { model: User, key: 'id' }
   },
 
-  // When the task must be completed
   dueDate: {
     type: DataTypes.DATEONLY,
     allowNull: true
   },
 
-  // How important this task is
   priority: {
     type: DataTypes.ENUM('Low', 'Medium', 'High'),
     defaultValue: 'Medium'
   },
 
-  // Current progress of the task
   status: {
     type: DataTypes.ENUM('To Do', 'In Progress', 'Completed'),
     defaultValue: 'To Do'
@@ -65,10 +46,7 @@ const Task = sequelize.define('Task', {
   timestamps: true
 });
 
-// A task belongs to a user (assigned to)
-Task.belongsTo(User, { as: 'assignee', foreignKey: 'assignedTo' });
-
-// A task belongs to a user (created by)
+// Task belongs to a creator
 Task.belongsTo(User, { as: 'creator', foreignKey: 'createdBy' });
 
 module.exports = Task;

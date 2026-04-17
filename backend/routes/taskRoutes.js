@@ -7,7 +7,9 @@ const {
   getTaskById,
   updateTask,
   deleteTask,
-  triggerReminders
+  triggerReminders,
+  addTaskMembers,
+  removeTaskMember
 } = require('../controllers/taskController.js');
 
 const { verifyToken, requireRole } = require('../middleware/authMiddleware.js');
@@ -27,6 +29,11 @@ router.get('/:id', verifyToken, getTaskById);
 
 // All roles can call update - controller restricts what Collaborator can change
 router.put('/:id', verifyToken, updateTask);
+
+// Admin and Project Manager can manage task members
+router.post('/:id/members', verifyToken, requireRole('Admin', 'ProjectManager'), addTaskMembers);
+router.delete('/:id/members/:userId', verifyToken, requireRole('Admin', 'ProjectManager'), removeTaskMember);
+
 
 // Only Admin and Project Manager can delete
 router.delete('/:id', verifyToken, requireRole('Admin', 'ProjectManager'), deleteTask);

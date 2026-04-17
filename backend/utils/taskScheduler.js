@@ -2,6 +2,8 @@ const cron = require('node-cron');
 const { Op } = require('sequelize');
 const Task = require('../models/Task.js');
 const User = require('../models/User.js');
+const Notification = require('../models/Notification.js');
+
 const {
   sendDeadlineReminderEmail,
   sendUrgentReminderEmail,
@@ -66,7 +68,15 @@ const checkDeadlinesAndNotify = async () => {
         console.log(`Sending 3-day reminder to ${userEmail} for task: ${task.title}`);
         await sendDeadlineReminderEmail(userEmail, userName, task);
       }
-    }
+    await Notification.create({
+  userId: task.assignee.id,
+  title: 'Task Deadline Reminder',
+  message: `Task "${task.title}" is due on ${new Date(task.dueDate).toDateString()}`,
+  type: 'deadline_approaching',
+  taskId: task.id,
+  isRead: false
+});
+}
 
     console.log(`Deadline check complete. Processed ${incompleteTasks.length} tasks.`);
 

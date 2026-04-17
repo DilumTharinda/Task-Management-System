@@ -1,257 +1,172 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useNotifications } from '../context/NotificationContext.jsx';
+import Layout from '../components/layout/Layout.jsx';
+import Avatar from '../components/common/Avatar.jsx';
+import LoadingSpinner from '../components/common/LoadingSpinner.jsx';
+import api from '../api/axios.js';
+import { formatDistanceToNow } from 'date-fns';
+
+const StatCard = ({ icon, label, value, color, onClick }) => (
+  <div onClick={onClick} style={{ backgroundColor: 'var(--bg-card)', borderRadius: '14px', padding: '20px 24px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)', cursor: onClick ? 'pointer' : 'default', transition: 'transform 0.15s, box-shadow 0.15s', display: 'flex', alignItems: 'center', gap: '16px' }}
+    onMouseEnter={e => onClick && (e.currentTarget.style.transform = 'translateY(-2px)')}
+    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+    <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>
+      {icon}
+    </div>
+    <div>
+      <p style={{ fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1 }}>{value}</p>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{label}</p>
+    </div>
+  </div>
+);
 
 export default function HomePage() {
+  const { user } = useAuth();
+  const { notifications, unreadCount } = useNotifications();
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get user from localStorage
-    const stored = localStorage.getItem('user');
-    if (!stored) {
-      // No user found means not logged in
-      navigate('/login');
-      return;
-    }
-    setUser(JSON.parse(stored));
-  }, [navigate]);
+    const fetchData = async () => {
+      try {
+        const [tasksRes] = await Promise.all([
+          api.get('/tasks')
+        ]);
+        const allTasks = tasksRes.data.tasks || [];
+        setTasks(allTasks.slice(0, 5));
+        setStats({
+          total: allTasks.length,
+          todo: allTasks.filter(t => t.status === 'To Do').length,
+          inProgress: allTasks.filter(t => t.status === 'In Progress').length,
+          completed: allTasks.filter(t => t.status === 'Completed').length,
+        });
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
-  const handleLogout = () => {
-    // Clear everything from localStorage
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
+  const priorityColor = { High: '#ef4444', Medium: '#f59e0b', Low: '#10b981' };
+  const statusColor = { 'To Do': '#6b7280', 'In Progress': '#3b9eed', 'Completed': '#10b981' };
 
-  if (!user) return null;
+  if (loading) return <Layout><LoadingSpinner /></Layout>;
 
   return (
-    <div style={styles.container}>
-
-      {/* Top navigation bar */}
-      <nav style={styles.navbar}>
-        <span style={styles.navTitle}>Task Management System</span>
-        <div style={styles.navRight}>
-          <span style={styles.navUser}>
-            {user.name} — <span style={styles.navRole}>{user.role}</span>
-          </span>
-          <button onClick={handleLogout} style={styles.logoutBtn}>
-            Logout
-          </button>
-        </div>
-      </nav>
-
-      {/* Main content area */}
-      <div style={styles.content}>
+    <Layout>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
 
         {/* Welcome banner */}
-        <div style={styles.welcomeCard}>
-          <h2 style={styles.welcomeTitle}>Welcome back, {user.name}</h2>
-          <p style={styles.welcomeSub}>
-            You are logged in as <strong>{user.role}</strong>.
-            Use the menu below to navigate the system.
-          </p>
+        <div style={{ background: 'linear-gradient(135deg, #0078d4 0%, #005a9e 100%)', borderRadius: '16px', padding: '28px 32px', marginBottom: '28px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '6px' }}>Good {getGreeting()}, {user?.name?.split(' ')[0]} 👋</h1>
+            <p style={{ fontSize: '14px', opacity: 0.85 }}>Here is what is happening in your workspace today.</p>
+          </div>
+          <Avatar name={user?.name || ''} size={56} />
         </div>
 
-        {/* Quick access cards based on role */}
-        <div style={styles.cardGrid}>
+        {/* Stats grid */}
+        {stats && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+            <StatCard icon="📋" label="Total Tasks" value={stats.total} color="#0078d4" onClick={() => navigate('/tasks')} />
+            <StatCard icon="⏳" label="To Do" value={stats.todo} color="#6b7280" onClick={() => navigate('/tasks?status=To Do')} />
+            <StatCard icon="🔄" label="In Progress" value={stats.inProgress} color="#3b9eed" onClick={() => navigate('/tasks?status=In Progress')} />
+            <StatCard icon="✅" label="Completed" value={stats.completed} color="#10b981" onClick={() => navigate('/tasks?status=Completed')} />
+          </div>
+        )}
 
-          {/* Tasks card — all roles see this */}
-          <div style={styles.featureCard}>
-            <div style={styles.cardIcon}>📋</div>
-            <h3 style={styles.cardTitle}>My Tasks</h3>
-            <p style={styles.cardDesc}>View and manage your assigned tasks</p>
-            <button style={styles.cardBtn} onClick={() => navigate('/tasks')}>
-              Go to Tasks
-            </button>
+        {/* Two column layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+
+          {/* Recent Tasks */}
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '14px', padding: '20px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Recent Tasks</h2>
+              <button onClick={() => navigate('/tasks')} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: '500', cursor: 'pointer' }}>View all →</button>
+            </div>
+
+            {tasks.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                <p style={{ fontSize: '28px', marginBottom: '8px' }}>📭</p>
+                <p style={{ fontSize: '13px' }}>No tasks yet</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {tasks.map(task => (
+                  <div key={task.id} onClick={() => navigate(`/tasks/${task.id}`)}
+                    style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-primary)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                      <p style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', lineHeight: '1.3', flex: 1 }}>{task.title}</p>
+                      <span style={{ fontSize: '10px', fontWeight: '600', padding: '3px 8px', borderRadius: '20px', backgroundColor: `${priorityColor[task.priority]}18`, color: priorityColor[task.priority], flexShrink: 0 }}>
+                        {task.priority}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                      <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', backgroundColor: `${statusColor[task.status]}18`, color: statusColor[task.status] }}>
+                        {task.status}
+                      </span>
+                      {task.dueDate && (
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          📅 {new Date(task.dueDate).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* User management — Admin only */}
-          {user.role === 'Admin' && (
-            <div style={styles.featureCard}>
-              <div style={styles.cardIcon}>👥</div>
-              <h3 style={styles.cardTitle}>User Management</h3>
-              <p style={styles.cardDesc}>Create and manage system users</p>
-              <button style={styles.cardBtn} onClick={() => navigate('/users')}>
-                Manage Users
-              </button>
+          {/* Recent Notifications */}
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '14px', padding: '20px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                Notifications
+                {unreadCount > 0 && (
+                  <span style={{ marginLeft: '8px', backgroundColor: 'var(--danger)', color: '#fff', borderRadius: '20px', fontSize: '10px', padding: '2px 7px', fontWeight: '700' }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </h2>
             </div>
-          )}
 
-          {/* Team view — Project Manager */}
-          {user.role === 'ProjectManager' && (
-            <div style={styles.featureCard}>
-              <div style={styles.cardIcon}>👷</div>
-              <h3 style={styles.cardTitle}>My Team</h3>
-              <p style={styles.cardDesc}>View team members and their roles</p>
-              <button style={styles.cardBtn} onClick={() => navigate('/team')}>
-                View Team
-              </button>
-            </div>
-          )}
-
-          {/* Change password — all roles */}
-          <div style={styles.featureCard}>
-            <div style={styles.cardIcon}>🔒</div>
-            <h3 style={styles.cardTitle}>Change Password</h3>
-            <p style={styles.cardDesc}>Update your account password</p>
-            <button style={styles.cardBtn} onClick={() => navigate('/change-password')}>
-              Change Password
-            </button>
+            {notifications.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                <p style={{ fontSize: '28px', marginBottom: '8px' }}>🔔</p>
+                <p style={{ fontSize: '13px' }}>No notifications</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {notifications.slice(0, 6).map(notif => (
+                  <div key={notif.id} style={{ padding: '10px 12px', borderRadius: '10px', backgroundColor: notif.isRead ? 'transparent' : 'var(--accent-light)', border: '1px solid var(--border)' }}>
+                    <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '2px' }}>{notif.title}</p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>{notif.message}</p>
+                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
-
-        {/* Role info panel */}
-        <div style={styles.infoPanel}>
-          <h4 style={styles.infoPanelTitle}>Your Permissions</h4>
-          {user.role === 'Admin' && (
-            <p style={styles.infoPanelText}>
-              As an Admin you have full access to user management,
-              task management, and all system features.
-            </p>
-          )}
-          {user.role === 'ProjectManager' && (
-            <p style={styles.infoPanelText}>
-              As a Project Manager you can create and assign tasks,
-              monitor progress, view team members, and manage all task communications.
-            </p>
-          )}
-          {user.role === 'Collaborator' && (
-            <p style={styles.infoPanelText}>
-              As a Collaborator you can view your assigned tasks,
-              update task status, add comments, and upload attachments.
-            </p>
-          )}
-        </div>
-
       </div>
-    </div>
+    </Layout>
   );
 }
 
-const styles = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#f0f2f5',
-    fontFamily: 'Arial, sans-serif'
-  },
-  navbar: {
-    backgroundColor: '#1a1a2e',
-    padding: '0 32px',
-    height: '60px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  navTitle: {
-    color: '#ffffff',
-    fontSize: '18px',
-    fontWeight: '600'
-  },
-  navRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '20px'
-  },
-  navUser: {
-    color: '#cccccc',
-    fontSize: '14px'
-  },
-  navRole: {
-    color: '#4fc3f7',
-    fontWeight: '600'
-  },
-  logoutBtn: {
-    backgroundColor: 'transparent',
-    border: '1px solid #cccccc',
-    color: '#cccccc',
-    padding: '6px 16px',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '13px'
-  },
-  content: {
-    maxWidth: '1000px',
-    margin: '0 auto',
-    padding: '32px 24px'
-  },
-  welcomeCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: '12px',
-    padding: '28px 32px',
-    marginBottom: '28px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    borderLeft: '4px solid #0078d4'
-  },
-  welcomeTitle: {
-    fontSize: '22px',
-    fontWeight: '600',
-    color: '#1a1a2e',
-    margin: '0 0 8px 0'
-  },
-  welcomeSub: {
-    fontSize: '14px',
-    color: '#555',
-    margin: 0
-  },
-  cardGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-    gap: '20px',
-    marginBottom: '28px'
-  },
-  featureCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: '12px',
-    padding: '24px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    textAlign: 'center',
-    gap: '10px'
-  },
-  cardIcon: {
-    fontSize: '32px'
-  },
-  cardTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#1a1a2e',
-    margin: 0
-  },
-  cardDesc: {
-    fontSize: '13px',
-    color: '#666',
-    margin: 0
-  },
-  cardBtn: {
-    marginTop: '8px',
-    padding: '8px 20px',
-    backgroundColor: '#0078d4',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '13px'
-  },
-  infoPanel: {
-    backgroundColor: '#e8f4fd',
-    borderRadius: '12px',
-    padding: '20px 24px',
-    border: '1px solid #b3d9f5'
-  },
-  infoPanelTitle: {
-    fontSize: '15px',
-    fontWeight: '600',
-    color: '#0078d4',
-    margin: '0 0 8px 0'
-  },
-  infoPanelText: {
-    fontSize: '14px',
-    color: '#333',
-    margin: 0,
-    lineHeight: '1.6'
-  }
-};
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'morning';
+  if (h < 17) return 'afternoon';
+  return 'evening';
+}

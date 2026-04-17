@@ -1,199 +1,136 @@
-import { useState } from 'react';
+import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
+import { ThemeContext } from '../context/ThemeContext.jsx';
 import api from '../api/axios.js';
+import LoadingSpinner from '../components/common/LoadingSpinner.jsx';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
+  const { theme, toggleTheme } = useContext(ThemeContext);
+  const isDark = theme === 'dark';
 
-  // Form state
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
     setError('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.email || !form.password) {
+      setError('Please fill in all fields.');
+      return;
+    }
     setLoading(true);
-
     try {
-      const response = await api.post('/auth/login', { email, password });
-
-      // Save token and user info to localStorage
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-
-      // If user must change password redirect to change password page
-      if (response.data.user.mustChangePassword) {
+      const res = await api.post('/auth/login', form);
+      login(res.data.token, res.data.user);
+      if (res.data.user.mustChangePassword) {
         navigate('/change-password');
-        return;
+      } else {
+        navigate('/home');
       }
-
-      // Otherwise go to home dashboard
-      navigate('/home');
-
     } catch (err) {
-      // Show error message from backend
-      setError(
-        err.response?.data?.description ||
-        err.response?.data?.message ||
-        'Login failed. Please try again.'
-      );
+      setError(err.response?.data?.description || err.response?.data?.message || 'Login failed.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0f172a' : '#f0f2f5', fontFamily: "'Inter', sans-serif", position: 'relative', padding: '20px' }}>
 
-        {/* Logo / Title area */}
-        <div style={styles.header}>
-          <h1 style={styles.title}>Task Management System</h1>
-          <p style={styles.subtitle}>Sign in to your account</p>
+      {/* Animated background blobs */}
+      <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', zIndex: 0, pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', top: '-10%', right: '-5%', width: '400px', height: '400px', borderRadius: '50%', backgroundColor: isDark ? 'rgba(59,158,237,0.06)' : 'rgba(0,120,212,0.06)', filter: 'blur(60px)' }} />
+        <div style={{ position: 'absolute', bottom: '-10%', left: '-5%', width: '350px', height: '350px', borderRadius: '50%', backgroundColor: isDark ? 'rgba(16,185,129,0.05)' : 'rgba(16,185,129,0.06)', filter: 'blur(60px)' }} />
+      </div>
+
+      {/* Theme toggle */}
+      <button onClick={toggleTheme} style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 10, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isDark ? '#94a3b8' : '#6b7280', transition: 'all 0.2s', fontSize: '16px' }}>
+        {isDark ? '☀️' : '🌙'}
+      </button>
+
+      {/* Card */}
+      <div style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', borderRadius: '20px', padding: '40px', width: '100%', maxWidth: '420px', boxShadow: isDark ? '0 8px 40px rgba(0,0,0,0.5)' : '0 8px 40px rgba(0,0,0,0.1)', position: 'relative', zIndex: 1, border: `1px solid ${isDark ? '#334155' : '#f1f5f9'}` }}>
+
+        {/* Brand */}
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px', backgroundColor: isDark ? 'rgba(59,158,237,0.12)' : 'rgba(0,120,212,0.08)', borderRadius: '16px', marginBottom: '16px' }}>
+            <svg width="28" height="28" viewBox="0 0 36 36" fill="none">
+              <rect x="4" y="4" width="12" height="12" rx="2" fill="#6EE7B7" />
+              <rect x="20" y="4" width="12" height="12" rx="2" fill="#34D399" opacity="0.7" />
+              <rect x="4" y="20" width="12" height="12" rx="2" fill="#34D399" opacity="0.7" />
+              <rect x="20" y="20" width="12" height="12" rx="2" fill="#6EE7B7" />
+            </svg>
+          </div>
+          <h1 style={{ fontSize: '22px', fontWeight: '700', color: isDark ? '#f1f5f9' : '#1a1a2e', margin: '0 0 6px' }}>Welcome back</h1>
+          <p style={{ fontSize: '14px', color: isDark ? '#64748b' : '#9ca3af', margin: 0 }}>Sign in to your TMS workspace</p>
         </div>
 
-        {/* Error message */}
         {error && (
-          <div style={styles.errorBox}>
-            {error}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2', border: `1px solid ${isDark ? 'rgba(239,68,68,0.3)' : '#fecaca'}`, color: isDark ? '#f87171' : '#dc2626', borderRadius: '10px', padding: '12px 14px', fontSize: '13px', marginBottom: '20px' }}>
+            ⚠️ {error}
           </div>
         )}
 
-        {/* Login form */}
-        <form onSubmit={handleLogin} style={styles.form}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Email Address</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              required
-              style={styles.input}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: '500', color: isDark ? '#cbd5e1' : '#374151' }}>Email Address</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: isDark ? '#475569' : '#9ca3af', display: 'flex' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M2 8l10 7 10-7" /></svg>
+              </span>
+              <input name="email" type="email" value={form.email} onChange={handleChange}
+                placeholder="you@example.com" autoComplete="email"
+                style={{ width: '100%', padding: '11px 12px 11px 40px', borderRadius: '10px', border: `1px solid ${isDark ? '#334155' : '#e5e7eb'}`, backgroundColor: isDark ? '#0f172a' : '#f9fafb', color: isDark ? '#f1f5f9' : '#1a1a2e', fontSize: '14px', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' }} />
+            </div>
           </div>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              required
-              style={styles.input}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: '500', color: isDark ? '#cbd5e1' : '#374151' }}>Password</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: isDark ? '#475569' : '#9ca3af', display: 'flex' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+              </span>
+              <input name="password" type={showPass ? 'text' : 'password'} value={form.password} onChange={handleChange}
+                placeholder="Enter your password" autoComplete="current-password"
+                style={{ width: '100%', padding: '11px 40px 11px 40px', borderRadius: '10px', border: `1px solid ${isDark ? '#334155' : '#e5e7eb'}`, backgroundColor: isDark ? '#0f172a' : '#f9fafb', color: isDark ? '#f1f5f9' : '#1a1a2e', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+              <button type="button" onClick={() => setShowPass(p => !p)}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: isDark ? '#475569' : '#9ca3af', display: 'flex', padding: 0 }}>
+                {showPass
+                  ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                }
+              </button>
+            </div>
           </div>
 
-          {/* Forgot password link */}
-          <div style={styles.forgotRow}>
-            <a href="/forgot-password" style={styles.forgotLink}>
-              Forgot your password?
+          <div style={{ textAlign: 'right', marginTop: '-8px' }}>
+            <a href="/forgot-password" style={{ fontSize: '13px', color: isDark ? '#60a5fa' : '#0078d4', textDecoration: 'none', fontWeight: '500' }}>
+              Forgot password?
             </a>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={loading ? {...styles.button, ...styles.buttonDisabled} : styles.button}
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
+          <button type="submit" disabled={loading}
+            style={{ padding: '13px', backgroundColor: loading ? '#6ea8da' : '#0078d4', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background-color 0.2s' }}>
+            {loading ? <LoadingSpinner size={20} /> : (
+              <>Sign In <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg></>
+            )}
           </button>
-
         </form>
+
+        <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '12px', color: isDark ? '#475569' : '#9ca3af' }}>
+          Department of Industrial Management · University of Kelaniya
+        </p>
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f0f2f5',
-    fontFamily: 'Arial, sans-serif'
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: '12px',
-    padding: '40px',
-    width: '100%',
-    maxWidth: '420px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-  },
-  header: {
-    textAlign: 'center',
-    marginBottom: '32px'
-  },
-  title: {
-    fontSize: '22px',
-    fontWeight: '600',
-    color: '#1a1a2e',
-    margin: '0 0 8px 0'
-  },
-  subtitle: {
-    fontSize: '14px',
-    color: '#666',
-    margin: 0
-  },
-  errorBox: {
-    backgroundColor: '#fff0f0',
-    border: '1px solid #ffcccc',
-    color: '#cc0000',
-    borderRadius: '8px',
-    padding: '12px 16px',
-    fontSize: '14px',
-    marginBottom: '20px'
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '20px'
-  },
-  fieldGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px'
-  },
-  label: {
-    fontSize: '14px',
-    fontWeight: '500',
-    color: '#333'
-  },
-  input: {
-    padding: '10px 14px',
-    borderRadius: '8px',
-    border: '1px solid #ddd',
-    fontSize: '14px',
-    outline: 'none',
-    transition: 'border-color 0.2s'
-  },
-  forgotRow: {
-    textAlign: 'right',
-    marginTop: '-10px'
-  },
-  forgotLink: {
-    fontSize: '13px',
-    color: '#0078d4',
-    textDecoration: 'none'
-  },
-  button: {
-    padding: '12px',
-    backgroundColor: '#0078d4',
-    color: '#ffffff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '15px',
-    fontWeight: '500',
-    cursor: 'pointer'
-  },
-  buttonDisabled: {
-    backgroundColor: '#99c9ef',
-    cursor: 'not-allowed'
-  }
-};

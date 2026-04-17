@@ -40,46 +40,19 @@ const addComment = async (req, res) => {
     const { taskId } = req.params;
     const { content } = req.body;
 
-    // Validate content
     if (!content || !content.trim()) {
-      // Delete uploaded file if validation fails
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      return res.status(400).json({
-        errorCode: 400,
-        message: 'Bad Request',
-        description: 'Comment content cannot be empty'
-      });
-    }
-
-    if (content.trim().length < 1) {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      return res.status(400).json({
-        errorCode: 400,
-        message: 'Bad Request',
-        description: 'Comment must have at least 1 character'
-      });
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ errorCode: 400, message: 'Bad Request', description: 'Comment content cannot be empty' });
     }
 
     if (content.trim().length > 2000) {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      return res.status(400).json({
-        errorCode: 400,
-        message: 'Bad Request',
-        description: 'Comment cannot exceed 2000 characters'
-      });
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ errorCode: 400, message: 'Bad Request', description: 'Comment cannot exceed 2000 characters' });
     }
 
-    // Check task access
     const task = await checkTaskAccess(taskId, req.user, res);
     if (!task) return;
 
-    // Build comment data
     const commentData = {
       content: content.trim(),
       taskId: parseInt(taskId),
@@ -87,7 +60,6 @@ const addComment = async (req, res) => {
       isEdited: false
     };
 
-    // If a file was attached to this comment, save its details
     if (req.file) {
       commentData.commentFileName = req.file.originalname;
       commentData.commentStoredFileName = req.file.filename;
@@ -96,19 +68,36 @@ const addComment = async (req, res) => {
       commentData.commentFileSize = req.file.size;
     }
 
-    // Create the comment
     const comment = await Comment.create(commentData);
 
-    // Fetch with author details
     const commentWithAuthor = await Comment.findByPk(comment.id, {
-      include: [{
-        model: User,
-        as: 'author',
-        attributes: ['id', 'name', 'email', 'role']
-      }],
-      // Never send file path to frontend
+      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email', 'role'] }],
       attributes: { exclude: ['commentFilePath'] }
     });
+
+    // Send real-time notification to all task assignees
+    // except the person who wrote the comment
+    try {
+      const TaskAssignee = require('../models/TaskAssignee');
+      const { sendNotificationToMany } = require('../utils/socketManager');
+      const io = req.app.get('io');
+
+      const assignees = await TaskAssignee.findAll({ where: { taskId } });
+      const assigneeIds = assignees
+        .map(a => a.userId)
+        .filter(uid => uid !== req.user.userId);
+
+      if (assigneeIds.length > 0) {
+        await sendNotificationToMany(io, assigneeIds, {
+          title: 'New Comment Added',
+          message: `${commentWithAuthor.author.name} commented on task: ${task.title}`,
+          type: 'comment_added',
+          taskId: parseInt(taskId)
+        });
+      }
+    } catch (notifError) {
+      console.error('Comment notification error:', notifError.message);
+    }
 
     return res.status(201).json({
       message: 'Comment added successfully',
@@ -116,15 +105,9 @@ const addComment = async (req, res) => {
     });
 
   } catch (error) {
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     console.error('Add comment error:', error);
-    return res.status(500).json({
-      errorCode: 500,
-      message: 'Internal Server Error',
-      description: 'Something went wrong on the server'
-    });
+    return res.status(500).json({ errorCode: 500, message: 'Internal Server Error', description: 'Something went wrong on the server' });
   }
 };
 
