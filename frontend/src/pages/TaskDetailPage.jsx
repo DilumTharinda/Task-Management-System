@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import Layout from '../components/layout/Layout.jsx';
@@ -6,215 +6,735 @@ import Avatar from '../components/common/Avatar.jsx';
 import LoadingSpinner from '../components/common/LoadingSpinner.jsx';
 import api from '../api/axios.js';
 import { toast } from 'react-hot-toast';
+import { formatDistanceToNow } from 'date-fns';
+import './TaskDetailPage.css';
+
+const priorityColor = { High: '#ef4444', Medium: '#f59e0b', Low: '#10b981' };
+const statusColor   = { 'To Do': '#6b7280', 'In Progress': '#3b9eed', Completed: '#10b981' };
+const typeIcon      = { 'image/jpeg': '🖼️', 'image/png': '🖼️', 'image/gif': '🖼️', 'application/pdf': '📄', 'video/mp4': '🎥', default: '📎' };
+const getFileIcon   = (type) => typeIcon[type] || typeIcon.default;
+const fmtSize       = (bytes) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024*1024)).toFixed(1)} MB`;
+const COMMENT_FILTERS = ['All', 'With Attachments', 'Edited', 'Mine'];
+
+const safeDate = (value) => {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+};
+
+const formatRelative = (value) => {
+  const date = safeDate(value);
+  return date ? formatDistanceToNow(date, { addSuffix: true }) : '—';
+};
+
+const formatDisplayDate = (value) => {
+  const date = safeDate(value);
+  return date ? date.toLocaleDateString() : '—';
+};
 
 export default function TaskDetailPage() {
-  const { id } = useParams();
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [task, setTask] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
+  const { id }        = useParams();
+  const { user }      = useAuth();
+  const navigate      = useNavigate();
 
-  useEffect(() => {
-    fetchTask();
-  }, [id]);
+  const [task,        setTask]        = useState(null);
+  const [comments,    setComments]    = useState([]);
+  const [attachments, setAttachments] = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [updating,    setUpdating]    = useState(false);
 
-  const fetchTask = async () => {
+  const [commentText,    setCommentText]    = useState('');
+  const [commentFile,    setCommentFile]    = useState(null);
+  const [postingComment, setPostingComment] = useState(false);
+  const commentFileRef = useRef();
+
+  const [editingComment, setEditingComment] = useState(null);
+  const [editContent,    setEditContent]    = useState('');
+
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [commentFilter, setCommentFilter] = useState('All');
+
+  useEffect(() => { fetchAll(); }, [id]);
+
+  const fetchAll = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/tasks/${id}`);
-      setTask(res.data.task);
-
-      const commentsRes = await api.get(`/comments/${id}`);
+      const [taskRes, commentsRes, attachmentsRes] = await Promise.all([
+        api.get(`/tasks/${id}`),
+        api.get(`/comments/${id}`),
+        api.get(`/attachments/${id}`)
+      ]);
+      setTask(taskRes.data.task || taskRes.data || null);
       setComments(commentsRes.data.comments || commentsRes.data || []);
+      setAttachments(attachmentsRes.data.attachments || attachmentsRes.data || []);
     } catch (e) {
-      console.error('Fetch task detail error:', e);
+      toast.error('Failed to load task details');
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
+  const isAdminOrPM  = user?.role === 'Admin' || user?.role === 'ProjectManager';
+  const isAssignee   = task?.assignees?.some(a => a.id === user?.id);
+  const canUpload    = isAdminOrPM || isAssignee;
+  const canDeleteAny = isAdminOrPM;
+
   const updateStatus = async (newStatus) => {
+    if (task.status === newStatus) return;
     setUpdating(true);
     try {
       await api.put(`/tasks/${id}`, { status: newStatus });
-      await fetchTask();
+      toast.success(`Status updated to "${newStatus}"`);
+      fetchAll();
     } catch (e) {
-      console.error('Update status error:', e);
+      toast.error('Failed to update status');
     } finally {
       setUpdating(false);
     }
   };
 
-  const priorityColor = { High: '#ef4444', Medium: '#f59e0b', Low: '#10b981' };
+  const handlePostComment = async () => {
+    if (!commentText.trim() && !commentFile) {
+      toast.error('Please enter a comment or attach a file');
+      return;
+    }
+    setPostingComment(true);
+    try {
+      const fd = new FormData();
+      fd.append('content', commentText.trim() || ' ');
+      if (commentFile) fd.append('file', commentFile);
+      await api.post(`/comments/${id}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Comment posted');
+      setCommentText('');
+      setCommentFile(null);
+      if (commentFileRef.current) commentFileRef.current.value = '';
+      fetchAll();
+    } catch (e) {
+      toast.error(e.response?.data?.description || 'Failed to post comment');
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const handleSaveEdit = async (commentId) => {
+    if (!editContent.trim()) { toast.error('Comment cannot be empty'); return; }
+    try {
+      await api.put(`/comments/${commentId}`, { content: editContent });
+      toast.success('Comment updated');
+      setEditingComment(null);
+      setEditContent('');
+      fetchAll();
+    } catch (e) {
+      toast.error('Failed to update comment');
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!window.confirm('Delete this comment?')) return;
+    try {
+      await api.delete(`/comments/${commentId}`);
+      toast.success('Comment deleted');
+      fetchAll();
+    } catch (e) {
+      toast.error('Failed to delete comment');
+    }
+  };
+
+  const handleUploadAttachment = async (file) => {
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      await api.post(`/attachments/${id}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('File uploaded successfully');
+      fetchAll();
+    } catch (e) {
+      toast.error(e.response?.data?.description || 'Upload failed');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleReplaceAttachment = async (attachmentId, file) => {
+    if (!file) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      await api.put(`/attachments/${attachmentId}/replace`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('File replaced');
+      fetchAll();
+    } catch (e) {
+      toast.error(e.response?.data?.description || 'Replace failed');
+    }
+  };
+
+  const handleDeleteAttachment = async (attachmentId) => {
+    if (!window.confirm('Delete this attachment permanently?')) return;
+    try {
+      await api.delete(`/attachments/${attachmentId}`);
+      toast.success('Attachment deleted');
+      fetchAll();
+    } catch (e) {
+      toast.error(e.response?.data?.description || 'Delete failed');
+    }
+  };
+
+  const downloadBlob = (data, fileName) => {
+    const url  = window.URL.createObjectURL(new Blob([data]));
+    const link = document.createElement('a');
+    link.href  = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadAttachment = async (attachmentId, fileName) => {
+    try {
+      const res = await api.get(`/attachments/download/${attachmentId}`, { responseType: 'blob' });
+      downloadBlob(res.data, fileName);
+    } catch (e) {
+      toast.error('Download failed');
+    }
+  };
+
+  const handleDownloadCommentAttachment = async (commentId, fileName) => {
+    try {
+      const res = await api.get(`/comments/download/${commentId}`, { responseType: 'blob' });
+      downloadBlob(res.data, fileName);
+    } catch (e) {
+      toast.error('Download failed');
+    }
+  };
+
+  const filteredComments = comments.filter(c => {
+    if (commentFilter === 'With Attachments') return !!c.commentFileName;
+    if (commentFilter === 'Edited')           return c.isEdited;
+    if (commentFilter === 'Mine')             return c.author?.id === user?.id;
+    return true;
+  });
 
   if (loading) return <Layout><LoadingSpinner /></Layout>;
-  if (!task) return <Layout><div>Task not found</div></Layout>;
+  if (!task)   return <Layout><div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Task not found.</div></Layout>;
 
   return (
     <Layout>
-      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-          <button onClick={() => navigate('/tasks')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '14px' }}>← Back to Tasks</button>
-          <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>Task Details</h1>
+      <div className="task-detail-page" style={{ maxWidth: '1000px', margin: '0 auto' }}>
+
+        {/* Breadcrumb */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+          <button
+            onClick={() => navigate('/tasks')}
+            className="icon-btn"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '13px', padding: '6px 10px', borderRadius: '8px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+            Back to Tasks
+          </button>
+          <span style={{ color: 'var(--border)', fontSize: '14px' }}>/</span>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {task.title}
+          </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '16px', padding: '24px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '20px' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>{task.title}</h2>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '12px', backgroundColor: `${priorityColor[task.priority]}18`, color: priorityColor[task.priority] }}>
+        {/* Main grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)', gap: '20px', alignItems: 'start' }}>
+
+          {/* LEFT COLUMN */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+            {/* Task header */}
+            <div style={card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+                <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0, lineHeight: 1.3, flex: 1 }}>
+                  {task.title}
+                </h1>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '20px', backgroundColor: `${priorityColor[task.priority]}18`, color: priorityColor[task.priority], textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     {task.priority}
                   </span>
-                  {(user?.role === 'Admin' || user?.role === 'ProjectManager') && (
+                  {isAdminOrPM && (
                     <button
                       onClick={() => navigate(`/tasks/edit/${id}`)}
-                      style={{ backgroundColor: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '4px 10px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
-                    >
+                      style={{ backgroundColor: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                       Edit
                     </button>
                   )}
                 </div>
               </div>
-              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                {task.description || 'No description provided.'}
+
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.7', whiteSpace: 'pre-wrap', margin: 0 }}>
+                {task.description || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No description provided.</span>}
               </p>
+
+              {task.assignees?.length > 0 && (
+                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500' }}>Assigned to:</span>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {task.assignees.map(a => (
+                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: 'var(--bg-primary)', borderRadius: '20px', padding: '3px 10px 3px 4px', border: '1px solid var(--border)' }}>
+                        <Avatar name={a.name} size={20} />
+                        <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-primary)' }}>{a.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '16px', padding: '24px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '20px' }}>Discussion & Attachments</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <textarea
-                    id="comment-text"
-                    placeholder="Write a comment..."
-                    style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', outline: 'none', resize: 'none', height: '60px' }}
-                  />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{ cursor: 'pointer', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)', padding: '8px', borderRadius: '8px', fontSize: '12px', textAlign: 'center', color: 'var(--text-primary)' }}>
-                      📎 Attach
-                      <input type="file" style={{ display: 'none' }} id="comment-file" />
-                    </label>
-                    <button
-                      onClick={async () => {
-                        const text = document.getElementById('comment-text').value;
-                        const file = document.getElementById('comment-file').files[0];
-                        if (!text && !file) return toast.error('Please enter a comment or attach a file');
-                        const fd = new FormData();
-                        fd.append('content', text);
-                        if (file) fd.append('file', file);
-                        try {
-                          await api.post(`/comments/${id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-                          toast.success('Comment added');
-                          fetchTask();
-                          document.getElementById('comment-text').value = '';
-                          document.getElementById('comment-file').value = '';
-                        } catch (e) { toast.error('Failed to add comment'); }
-                      }}
-                      style={{ backgroundColor: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                      Post
+            {/* Task Attachments */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <h3 style={sectionTitle}>
+                  Attachments
+                  <span style={countBadge}>{attachments.length}</span>
+                </h3>
+                {canUpload && (
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    backgroundColor: uploadingFile ? 'var(--text-muted)' : 'var(--accent)',
+                    color: '#fff', padding: '7px 14px', borderRadius: '8px',
+                    fontSize: '12px', fontWeight: '600',
+                    cursor: uploadingFile ? 'not-allowed' : 'pointer'
+                  }}>
+                    {uploadingFile
+                      ? <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><LoadingSpinner size={14} /> Uploading...</span>
+                      : '+ Upload File'
+                    }
+                    <input
+                      type="file"
+                      style={{ display: 'none' }}
+                      disabled={uploadingFile}
+                      onChange={e => {
+                        const f = e.target.files[0];
+                        if (f) { handleUploadAttachment(f); e.target.value = ''; }
+                      }} />
+                  </label>
+                )}
+              </div>
+
+              {attachments.length === 0 ? (
+                <div style={emptyState}>
+                  <span style={{ fontSize: '32px' }}>📂</span>
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                    {canUpload ? 'No files yet. Click Upload File to add one.' : 'No attachments yet.'}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto' }}>
+                  {attachments.map(att => {
+                    const canEditAtt = isAdminOrPM || att.uploader?.id === user?.id;
+                    return (
+                      <div key={att.id} className="att-row"
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', backgroundColor: 'var(--bg-primary)', borderRadius: '10px', border: '1px solid var(--border)', transition: 'background-color 0.15s' }}>
+                        <span style={{ fontSize: '20px', flexShrink: 0 }}>{getFileIcon(att.fileType)}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {att.fileName}
+                          </p>
+                          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                            {fmtSize(att.fileSize)} · {att.uploader?.name} · {formatDisplayDate(att.createdAt)}
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                          <button onClick={() => handleDownloadAttachment(att.id, att.fileName)} style={linkBtn}>
+                            Download
+                          </button>
+                          {canEditAtt && (
+                            <>
+                              <label style={{ ...linkBtn, cursor: 'pointer' }}>
+                                Replace
+                                <input type="file" style={{ display: 'none' }}
+                                  onChange={e => { const f = e.target.files[0]; if (f) { handleReplaceAttachment(att.id, f); e.target.value = ''; } }} />
+                              </label>
+                              <button onClick={() => handleDeleteAttachment(att.id)} style={{ ...linkBtn, color: '#ef4444' }}>
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Discussion */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <h3 style={sectionTitle}>
+                  Discussion
+                  <span style={countBadge}>{comments.length}</span>
+                </h3>
+
+                {/* Filter tabs */}
+                <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-primary)', borderRadius: '8px', padding: '3px' }}>
+                  {COMMENT_FILTERS.map(f => (
+                    <button key={f} className="filter-btn"
+                      onClick={() => setCommentFilter(f)}
+                      style={{
+                        padding: '4px 10px', borderRadius: '6px', border: 'none',
+                        fontSize: '11px', fontWeight: '600', cursor: 'pointer',
+                        backgroundColor: commentFilter === f ? 'var(--accent)' : 'transparent',
+                        color: commentFilter === f ? '#fff' : 'var(--text-muted)'
+                      }}>
+                      {f}
                     </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Comment input */}
+              <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border)', padding: '14px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                  <Avatar name={user?.name || ''} size={32} />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <textarea
+                      className="task-detail-textarea"
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                      placeholder="Write a comment... (emoji supported, Ctrl+Enter to send)"
+                      onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handlePostComment(); }}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', resize: 'none', minHeight: '72px', boxSizing: 'border-box', lineHeight: '1.5', transition: 'border-color 0.2s', fontFamily: 'inherit' }} />
+
+                    {/* File preview */}
+                    {commentFile && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--accent-light)', borderRadius: '8px', padding: '8px 12px', border: '1px solid var(--border)' }}>
+                        <span>{getFileIcon(commentFile.type)}</span>
+                        <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {commentFile.name}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{fmtSize(commentFile.size)}</span>
+                        <button
+                          onClick={() => { setCommentFile(null); if (commentFileRef.current) commentFileRef.current.value = ''; }}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px', padding: 0, lineHeight: 1, flexShrink: 0 }}>
+                          x
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-muted)', padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
+                        Attach file
+                        <input
+                          ref={commentFileRef}
+                          type="file"
+                          style={{ display: 'none' }}
+                          onChange={e => setCommentFile(e.target.files[0] || null)} />
+                      </label>
+
+                      <button
+                        onClick={handlePostComment}
+                        disabled={postingComment}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: postingComment ? 'var(--text-muted)' : 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: postingComment ? 'not-allowed' : 'pointer' }}>
+                        {postingComment ? <LoadingSpinner size={16} /> : 'Post'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {comments.length > 0 ? (
-                  comments.map(c => (
-                    <div key={c.id} style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>{c.user?.name}</span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{new Date(c.createdAt).toLocaleDateString()}</span>
-                      </div>
-                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>{c.content}</p>
-                      {c.attachment && (
-                        <a href={`/api/comments/download/${c.id}`} target="_blank" style={{ display: 'block', marginTop: '8px', fontSize: '11px', color: 'var(--accent)', textDecoration: 'none' }}>📎 Download Attachment</a>
-                      )}
-                    </div>
-                  ))
+
+              {/* Comments list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '480px', overflowY: 'auto' }}>
+                {filteredComments.length === 0 ? (
+                  <div style={emptyState}>
+                    <span style={{ fontSize: '28px' }}>💬</span>
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                      {commentFilter === 'All' ? 'No comments yet. Be the first to comment!' : `No comments match "${commentFilter}"`}
+                    </p>
+                  </div>
                 ) : (
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>No comments yet.</p>
+                  filteredComments.map(c => {
+                    const isOwn     = c.author?.id === user?.id;
+                    const canDelete = isOwn || canDeleteAny;
+                    const canEdit   = isOwn;
+                    const isEditing = editingComment === c.id;
+
+                    return (
+                      <div key={c.id} className="cmt-box"
+                        style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-primary)', border: `1px solid ${isOwn ? 'var(--accent-light)' : 'var(--border)'}`, transition: 'border-color 0.2s' }}>
+
+                        {/* Comment header */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Avatar name={c.author?.name || '?'} size={28} />
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                                  {c.author?.name}
+                                </span>
+                                {isOwn && (
+                                  <span style={{ fontSize: '10px', backgroundColor: 'var(--accent-light)', color: 'var(--accent)', borderRadius: '4px', padding: '1px 5px', fontWeight: '600' }}>
+                                    You
+                                  </span>
+                                )}
+                                <span style={{ fontSize: '10px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', borderRadius: '4px', padding: '1px 5px' }}>
+                                  {c.author?.role}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                  {formatRelative(c.createdAt)}
+                                </span>
+                                {c.isEdited && (
+                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                    edited
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action buttons */}
+                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                            {canEdit && !isEditing && (
+                              <button
+                                onClick={() => { setEditingComment(c.id); setEditContent(c.content); }}
+                                style={actionBtn}>
+                                Edit
+                              </button>
+                            )}
+                            {isEditing && (
+                              <>
+                                <button onClick={() => handleSaveEdit(c.id)} style={{ ...actionBtn, color: '#10b981', fontWeight: '700' }}>
+                                  Save
+                                </button>
+                                <button onClick={() => { setEditingComment(null); setEditContent(''); }} style={{ ...actionBtn, color: 'var(--text-muted)' }}>
+                                  Cancel
+                                </button>
+                              </>
+                            )}
+                            {canDelete && !isEditing && (
+                              <button onClick={() => handleDeleteComment(c.id)} style={{ ...actionBtn, color: '#ef4444' }}>
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Comment body */}
+                        {isEditing ? (
+                          <textarea
+                            className="task-detail-textarea"
+                            value={editContent}
+                            onChange={e => setEditContent(e.target.value)}
+                            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', resize: 'vertical', minHeight: '72px', boxSizing: 'border-box', lineHeight: '1.5', fontFamily: 'inherit' }} />
+                        ) : (
+                          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                            {c.content}
+                          </p>
+                        )}
+
+                        {/* Comment attachment */}
+                        {c.commentFileName && (
+                          <button
+                            onClick={() => handleDownloadCommentAttachment(c.id, c.commentFileName)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '10px', padding: '6px 12px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--accent)', fontSize: '12px', fontWeight: '500', cursor: 'pointer' }}>
+                            {getFileIcon(c.commentFileType)} {c.commentFileName}
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                              ({fmtSize(c.commentFileSize || 0)})
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
 
-            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '16px', padding: '24px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>Assignees</h3>
-                {(user?.role === 'Admin' || user?.role === 'ProjectManager') && (
-                   <button
-                   onClick={() => navigate(`/tasks/edit/${id}`)}
-                   style={{ backgroundColor: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                 >
-                   Manage
-                 </button>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                {task.assignees?.length > 0 ? (
-                  task.assignees.map(a => (
-                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '20px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
-                      <Avatar name={a.name} size={24} />
-                      <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '500' }}>{a.name}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No assignees assigned</p>
-                )}
-              </div>
-            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '16px', padding: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '16px' }}>Status</h3>
+          {/* RIGHT COLUMN */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Status */}
+            <div style={card}>
+              <h3 style={{ ...sectionTitle, marginBottom: '14px' }}>Status</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {['To Do', 'In Progress', 'Completed'].map(s => (
-                  <button
-                    key={s}
-                    disabled={updating}
+                  <button key={s} className="status-btn" disabled={updating}
                     onClick={() => updateStatus(s)}
                     style={{
-                      textAlign: 'left',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid',
-                      borderColor: task.status === s ? 'var(--accent)' : 'var(--border)',
-                      backgroundColor: task.status === s ? 'var(--accent-light)' : 'transparent',
-                      color: task.status === s ? 'var(--accent)' : 'var(--text-primary)',
-                      fontSize: '13px',
-                      fontWeight: task.status === s ? '600' : '400',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
+                      textAlign: 'left', padding: '10px 14px',
+                      borderRadius: '10px', border: '1.5px solid',
+                      borderColor: task.status === s ? statusColor[s] : 'var(--border)',
+                      backgroundColor: task.status === s ? `${statusColor[s]}15` : 'transparent',
+                      color: task.status === s ? statusColor[s] : 'var(--text-primary)',
+                      fontSize: '13px', fontWeight: task.status === s ? '700' : '400',
+                      cursor: updating ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s',
+                      display: 'flex', alignItems: 'center', gap: '8px'
+                    }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusColor[s], flexShrink: 0 }} />
                     {s}
+                    {task.status === s && (
+                      <svg style={{ marginLeft: 'auto' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '16px', padding: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '12px' }}>Metadata</h3>
+            {/* Details */}
+            <div style={card}>
+              <h3 style={{ ...sectionTitle, marginBottom: '14px' }}>Details</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Created by</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '500' }}>{task.creator?.name}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Due Date</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '500' }}>
-                    {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'N/A'}
-                  </span>
-                </div>
+                {[
+                  { label: 'Created by', value: task.creator?.name },
+                  {
+                    label: 'Priority',
+                    value: <span style={{ color: priorityColor[task.priority], fontWeight: '600' }}>{task.priority}</span>
+                  },
+                  {
+                    label: 'Due Date',
+                    value: (() => {
+                      const due = safeDate(task.dueDate);
+                      if (!due) return 'Not set';
+                      const diff = Math.ceil((due - new Date()) / (1000 * 60 * 60 * 24));
+                      const col = diff < 0 ? '#ef4444' : diff <= 3 ? '#f59e0b' : 'var(--text-primary)';
+                      return (
+                        <span style={{ color: col, fontWeight: '500' }}>
+                          {due.toLocaleDateString()}
+                          {diff < 0 ? ' (Overdue)' : diff === 0 ? ' (Today)' : diff <= 3 ? ` (${diff}d left)` : ''}
+                        </span>
+                      );
+                    })()
+                  },
+                  {
+                    label: 'Created',
+                    value: formatRelative(task.createdAt)
+                  },
+                  {
+                    label: 'Last updated',
+                    value: formatRelative(task.updatedAt)
+                  }
+                ].map(row => (
+                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>{row.label}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', textAlign: 'right' }}>{row.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
+
+            {/* Assignees */}
+            {task.assignees?.length > 0 && (
+              <div style={card}>
+                <h3 style={{ ...sectionTitle, marginBottom: '14px' }}>
+                  Assignees
+                  <span style={countBadge}>{task.assignees.length}</span>
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {task.assignees.map(a => (
+                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Avatar name={a.name} size={30} />
+                      <div>
+                        <p style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', margin: 0 }}>{a.name}</p>
+                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>{a.role}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ ...card, textAlign: 'center', padding: '16px' }}>
+                <p style={{ fontSize: '22px', fontWeight: '700', color: 'var(--accent)', margin: '0 0 4px' }}>
+                  {comments.length}
+                </p>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>Comments</p>
+              </div>
+              <div style={{ ...card, textAlign: 'center', padding: '16px' }}>
+                <p style={{ fontSize: '22px', fontWeight: '700', color: '#10b981', margin: '0 0 4px' }}>
+                  {attachments.length}
+                </p>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>Files</p>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
     </Layout>
   );
 }
+
+const card = {
+  backgroundColor: 'var(--bg-card)',
+  borderRadius: '14px',
+  padding: '20px',
+  border: '1px solid var(--border)',
+  boxShadow: 'var(--shadow-sm)'
+};
+
+const sectionTitle = {
+  fontSize: '14px',
+  fontWeight: '600',
+  color: 'var(--text-primary)',
+  margin: 0,
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px'
+};
+
+const countBadge = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: '20px',
+  height: '20px',
+  backgroundColor: 'var(--bg-primary)',
+  border: '1px solid var(--border)',
+  borderRadius: '20px',
+  fontSize: '11px',
+  fontWeight: '600',
+  color: 'var(--text-secondary)',
+  padding: '0 6px'
+};
+
+const linkBtn = {
+  background: 'none',
+  border: 'none',
+  color: 'var(--accent)',
+  fontSize: '11px',
+  fontWeight: '500',
+  cursor: 'pointer',
+  padding: '4px 6px',
+  borderRadius: '5px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '3px'
+};
+
+const actionBtn = {
+  background: 'none',
+  border: 'none',
+  fontSize: '11px',
+  fontWeight: '500',
+  cursor: 'pointer',
+  padding: '4px 8px',
+  borderRadius: '6px',
+  color: 'var(--text-muted)'
+};
+
+const emptyState = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '32px',
+  textAlign: 'center'
+};
