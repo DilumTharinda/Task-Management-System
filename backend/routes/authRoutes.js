@@ -174,6 +174,7 @@ router.get('/verify-reset-token/:token', verifyResetToken);
  *         description: Invalid token or weak password
  */
 
+router.post('/reset-password/:token', resetPassword);
 router.post('/reset-password', resetPassword);
 
 module.exports = router;

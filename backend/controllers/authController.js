@@ -386,7 +386,8 @@ const verifyResetToken = async (req, res) => {
 // User sends the reset token and their new password
 const resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+     const token = req.params.token || req.body.token;
+    const newPassword = req.body.password || req.body.newPassword;
 
     // Validate token is provided
     if (!token) {

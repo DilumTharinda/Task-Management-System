@@ -280,56 +280,39 @@ const updateUser = async (req, res) => {
 const deactivateUser = async (req, res) => {
   try {
     const { id } = req.params;
-
     const user = await User.findByPk(id);
 
     if (!user) {
-      return res.status(404).json({
-        errorCode: 404,
-        message: 'Not Found',
-        description: `No user found with ID ${id}`
-      });
+      return res.status(404).json({ errorCode: 404, message: 'Not Found', description: `No user found with ID ${id}` });
     }
 
-    // Admin cannot deactivate another Admin
     if (user.role === 'Admin' && user.id !== req.user.userId) {
-      return res.status(403).json({
-        errorCode: 403,
-        message: 'Forbidden',
-        description: 'You cannot deactivate another Admin account'
-      });
+      return res.status(403).json({ errorCode: 403, message: 'Forbidden', description: 'You cannot deactivate another Admin account' });
     }
 
-    // Admin cannot deactivate themselves
     if (user.id === req.user.userId) {
-      return res.status(400).json({
-        errorCode: 400,
-        message: 'Bad Request',
-        description: 'You cannot deactivate your own account'
-      });
+      return res.status(400).json({ errorCode: 400, message: 'Bad Request', description: 'You cannot deactivate your own account' });
     }
 
     if (!user.isActive) {
-      return res.status(400).json({
-        errorCode: 400,
-        message: 'Bad Request',
-        description: 'This user is already deactivated'
-      });
+      return res.status(400).json({ errorCode: 400, message: 'Bad Request', description: 'This user is already deactivated' });
     }
 
     await user.update({ isActive: false });
 
-    return res.status(200).json({
-      message: `User ${user.name} has been deactivated successfully`
-    });
+    // Send deactivation email notification
+    try {
+      const { sendDeactivationEmail } = require('../utils/emailService');
+      await sendDeactivationEmail(user.email, user.name);
+    } catch (emailError) {
+      console.error('Deactivation email failed:', emailError.message);
+    }
+
+    return res.status(200).json({ message: `User ${user.name} has been deactivated successfully` });
 
   } catch (error) {
     console.error('Deactivate user error:', error);
-    return res.status(500).json({
-      errorCode: 500,
-      message: 'Internal Server Error',
-      description: 'Something went wrong on the server'
-    });
+    return res.status(500).json({ errorCode: 500, message: 'Internal Server Error', description: 'Something went wrong on the server' });
   }
 };
 

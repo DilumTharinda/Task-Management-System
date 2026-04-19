@@ -281,6 +281,24 @@ const sendPasswordResetSuccessEmail = async (toEmail, name) => {
   await transporter.sendMail(mailOptions);
 };
 
+const sendDeactivationEmail = async (toEmail, name) => {
+  const mailOptions = {
+    from: `"TMS System" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Your TMS Account Has Been Deactivated',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px;">
+        <h2 style="color:#e65c00;">Account Deactivated</h2>
+        <p>Hello <strong>${name}</strong>,</p>
+        <p>Your Task Management System account has been <strong style="color:#e65c00;">deactivated</strong> by an Administrator.</p>
+        <p>You will no longer be able to log in to the system.</p>
+        <p>If you believe this was a mistake, please contact your Administrator immediately.</p>
+      </div>
+    `
+  };
+  await transporter.sendMail(mailOptions);
+};
+
 module.exports = {
   sendWelcomeEmail,
   sendPasswordChangedEmail,

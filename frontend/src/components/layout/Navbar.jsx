@@ -5,6 +5,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { useNavigate } from 'react-router-dom';
 import Avatar from '../common/Avatar';
 import NotificationPanel from '../common/NotificationPanel';
+import { NavLink } from 'react-router-dom';
 
 export default function Navbar({ onToggleSidebar }) {
   const { user, logout } = useAuth();
@@ -49,6 +50,22 @@ export default function Navbar({ onToggleSidebar }) {
           <span style={styles.brandName}>TMS</span>
         </div>
       </div>
+
+   
+<NavLink to="/home" style={({ isActive }) => ({
+  display: 'flex', alignItems: 'center', gap: '5px',
+  padding: '6px 10px', borderRadius: '8px', border: 'none',
+  background: isActive ? 'var(--accent-light)' : 'none',
+  color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+  fontSize: '13px', fontWeight: '500', textDecoration: 'none',
+  cursor: 'pointer', transition: 'all 0.15s'
+})}>
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
+  </svg>
+  Home
+</NavLink>
 
       {/* Right — theme, notifications, profile */}
       <div style={styles.right}>

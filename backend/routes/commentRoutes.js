@@ -6,7 +6,8 @@ const {
   getCommentsByTask,
   updateComment,
   deleteComment,
-  downloadCommentAttachment
+  downloadCommentAttachment,
+  removeCommentAttachment
 } = require('../controllers/commentController.js');
 
 const { verifyToken } = require('../middleware/authMiddleware.js');
@@ -17,6 +18,7 @@ const { upload, checkFileSize } = require('../utils/uploadConfig.js');
 router.get('/download/:commentId', verifyToken, downloadCommentAttachment);
 
 // Standard comment routes
+router.delete('/:commentId/attachment', verifyToken, removeCommentAttachment);
 router.post('/:taskId', verifyToken, upload.single('file'), checkFileSize, addComment);
 router.get('/:taskId', verifyToken, getCommentsByTask);
 router.put('/:commentId', verifyToken, updateComment);

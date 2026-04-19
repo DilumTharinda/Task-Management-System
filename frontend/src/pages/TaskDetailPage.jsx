@@ -14,7 +14,7 @@ const statusColor   = { 'To Do': '#6b7280', 'In Progress': '#3b9eed', Completed:
 const typeIcon      = { 'image/jpeg': '🖼️', 'image/png': '🖼️', 'image/gif': '🖼️', 'application/pdf': '📄', 'video/mp4': '🎥', default: '📎' };
 const getFileIcon   = (type) => typeIcon[type] || typeIcon.default;
 const fmtSize       = (bytes) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024*1024)).toFixed(1)} MB`;
-const COMMENT_FILTERS = ['All', 'With Attachments', 'Edited', 'Mine'];
+const COMMENT_FILTERS = ['All', 'Recent', 'Old', 'With Attachments', 'Edited', 'Mine'];
 
 const safeDate = (value) => {
   const date = value ? new Date(value) : null;
@@ -215,11 +215,17 @@ export default function TaskDetailPage() {
     }
   };
 
-  const filteredComments = comments.filter(c => {
+  const filteredComments = [...comments]
+  .filter(c => {
     if (commentFilter === 'With Attachments') return !!c.commentFileName;
     if (commentFilter === 'Edited')           return c.isEdited;
     if (commentFilter === 'Mine')             return c.author?.id === user?.id;
     return true;
+  })
+  .sort((a, b) => {
+    if (commentFilter === 'Recent') return new Date(b.createdAt) - new Date(a.createdAt);
+    if (commentFilter === 'Old')    return new Date(a.createdAt) - new Date(b.createdAt);
+    return new Date(a.createdAt) - new Date(b.createdAt); // default oldest first
   });
 
   if (loading) return <Layout><LoadingSpinner /></Layout>;
@@ -522,16 +528,40 @@ export default function TaskDetailPage() {
 
                         {/* Comment body */}
                         {isEditing ? (
-                          <textarea
-                            className="task-detail-textarea"
-                            value={editContent}
-                            onChange={e => setEditContent(e.target.value)}
-                            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', resize: 'vertical', minHeight: '72px', boxSizing: 'border-box', lineHeight: '1.5', fontFamily: 'inherit' }} />
-                        ) : (
-                          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                            {c.content}
-                          </p>
-                        )}
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <textarea
+      className="task-detail-textarea"
+      value={editContent}
+      onChange={e => setEditContent(e.target.value)}
+      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', resize: 'vertical', minHeight: '72px', boxSizing: 'border-box', lineHeight: '1.5', fontFamily: 'inherit' }} />
+
+    {/* Remove attachment option while editing */}
+    {c.commentFileName && (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
+        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+          {getFileIcon(c.commentFileType)} {c.commentFileName}
+        </span>
+        <button
+          onClick={async () => {
+            try {
+              await api.delete(`/comments/${c.id}/attachment`);
+              toast.success('Attachment removed');
+              fetchAll();
+            } catch (e) {
+              toast.error('Failed to remove attachment');
+            }
+          }}
+          style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', cursor: 'pointer', fontWeight: '500' }}>
+          Remove attachment
+        </button>
+      </div>
+    )}
+  </div>
+) : (
+  <p style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', margin: 0, whiteSpace: 'pre-wrap' }}>
+    {c.content}
+  </p>
+)}
 
                         {/* Comment attachment */}
                         {c.commentFileName && (

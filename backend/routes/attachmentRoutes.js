@@ -22,13 +22,7 @@ router.post(
 );
 
 // PUT /api/attachments/:attachmentId — replace an existing attachment with a new file
-router.put(
-  '/:attachmentId',
-  verifyToken,
-  upload.any(),
-  checkFileSize,
-  replaceAttachment
-);
+router.put('/:attachmentId/replace', verifyToken, upload.single('file'), checkFileSize, replaceAttachment);
 
 // GET /api/attachments/:taskId — get all attachments for a task
 router.get('/:taskId', verifyToken, getAttachmentsByTask);

@@ -79,90 +79,54 @@ const uploadAttachment = async (req, res) => {
 };
 
 // ── REPLACE ATTACHMENT ─────────────────────────────────
-// PUT /api/attachments/:attachmentId
-// Replaces an existing attachment file with a new one
-// taskId stays the same — only the file itself is replaced
-// Collaborator can only replace their own uploads
-// Project Manager and Admin can replace any attachment
+// PUT /api/attachments/:attachmentId/replace
 const replaceAttachment = async (req, res) => {
   try {
     const { attachmentId } = req.params;
 
-    // Get the new uploaded file
-    const newFile = req.files && req.files.length > 0 ? req.files[0] : null;
-
-    if (!newFile) {
-      return res.status(400).json({
-        errorCode: 400,
-        message: 'Bad Request',
-        description: 'No file was uploaded. Please select a new file to replace with.'
-      });
+    if (!req.file) {
+      return res.status(400).json({ errorCode: 400, message: 'Bad Request', description: 'No file was uploaded' });
     }
 
-    // Find the existing attachment in the database
     const attachment = await Attachment.findByPk(attachmentId);
     if (!attachment) {
-      // Clean up the new file since we cannot proceed
-      fs.unlinkSync(newFile.path);
-      return res.status(404).json({
-        errorCode: 404,
-        message: 'Not Found',
-        description: `No attachment found with ID ${attachmentId}`
-      });
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ errorCode: 404, message: 'Not Found', description: `No attachment found with ID ${attachmentId}` });
     }
 
-    // Collaborator can only replace their own uploads
+    // Check permission
     if (req.user.role === 'Collaborator' && attachment.uploadedBy !== req.user.userId) {
-      fs.unlinkSync(newFile.path);
-      return res.status(403).json({
-        errorCode: 403,
-        message: 'Forbidden',
-        description: 'You can only replace your own uploaded files'
-      });
+      fs.unlinkSync(req.file.path);
+      return res.status(403).json({ errorCode: 403, message: 'Forbidden', description: 'You can only replace your own uploaded files' });
     }
 
-    // Delete the old file from disk
-    if (fs.existsSync(attachment.filePath)) {
-      fs.unlinkSync(attachment.filePath);
-    }
+    // Delete old file from disk
+    const oldPath = path.resolve(attachment.filePath);
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
 
-    // Update the database record with new file details
-    // taskId and uploadedBy stay the same — only file info changes
+    // Update record with new file details
     await attachment.update({
-      fileName:       newFile.originalname,
-      storedFileName: newFile.filename,
-      filePath:       newFile.path,
-      fileType:       newFile.mimetype,
-      fileSize:       newFile.size
-    });
-
-    // Return updated record with uploader info
-    const updatedAttachment = await Attachment.findByPk(attachment.id, {
-      include: [{
-        model: User,
-        as: 'uploader',
-        attributes: ['id', 'name', 'email']
-      }],
-      attributes: { exclude: ['filePath'] }
+      fileName: req.file.originalname,
+      storedFileName: req.file.filename,
+      filePath: req.file.path,
+      fileType: req.file.mimetype,
+      fileSize: req.file.size
     });
 
     return res.status(200).json({
       message: 'Attachment replaced successfully',
-      attachment: updatedAttachment
+      attachment: {
+        id: attachment.id,
+        fileName: attachment.fileName,
+        fileType: attachment.fileType,
+        fileSize: attachment.fileSize
+      }
     });
 
   } catch (error) {
-    // Clean up new file if something went wrong
-    const newFile = req.files && req.files[0];
-    if (newFile && fs.existsSync(newFile.path)) {
-      fs.unlinkSync(newFile.path);
-    }
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     console.error('Replace attachment error:', error);
-    return res.status(500).json({
-      errorCode: 500,
-      message: 'Internal Server Error',
-      description: 'Something went wrong on the server'
-    });
+    return res.status(500).json({ errorCode: 500, message: 'Internal Server Error', description: 'Something went wrong on the server' });
   }
 };
 

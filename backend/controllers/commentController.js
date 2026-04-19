@@ -380,10 +380,53 @@ const downloadCommentAttachment = async (req, res) => {
   }
 };
 
+// ── REMOVE COMMENT ATTACHMENT ──────────────────────────
+// DELETE /api/comments/:commentId/attachment
+const removeCommentAttachment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+
+    const comment = await Comment.findByPk(commentId);
+
+    if (!comment) {
+      return res.status(404).json({ errorCode: 404, message: 'Not Found', description: 'Comment not found' });
+    }
+
+    if (!comment.commentFilePath) {
+      return res.status(400).json({ errorCode: 400, message: 'Bad Request', description: 'This comment has no attachment' });
+    }
+
+    // Only comment author can remove their attachment
+    if (comment.userId !== req.user.userId) {
+      return res.status(403).json({ errorCode: 403, message: 'Forbidden', description: 'You can only remove attachments from your own comments' });
+    }
+
+    // Delete physical file
+    safeDeleteFile(comment.commentFilePath);
+
+    // Clear attachment fields from comment record
+    await comment.update({
+      commentFileName: null,
+      commentStoredFileName: null,
+      commentFilePath: null,
+      commentFileType: null,
+      commentFileSize: null
+    });
+
+    return res.status(200).json({ message: 'Comment attachment removed successfully' });
+
+  } catch (error) {
+    console.error('Remove comment attachment error:', error);
+    return res.status(500).json({ errorCode: 500, message: 'Internal Server Error', description: 'Something went wrong' });
+  }
+};
+
+
 module.exports = {
   addComment,
   getCommentsByTask,
   updateComment,
   deleteComment,
-  downloadCommentAttachment
+  downloadCommentAttachment,
+  removeCommentAttachment
 };
