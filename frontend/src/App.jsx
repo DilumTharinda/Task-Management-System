@@ -2,6 +2,7 @@ import TaskForm from "./components/tasks/TaskForm.jsx";
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { NotificationProvider } from './context/NotificationContext.jsx';
@@ -87,6 +88,7 @@ export default function App() {
         <AuthProvider>
           <NotificationProvider>
             <AppRoutes />
+            <SpeedInsights />
           </NotificationProvider>
         </AuthProvider>
       </ThemeProvider>
