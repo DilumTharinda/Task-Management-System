@@ -26,8 +26,13 @@ const roleLabel = {
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const { theme } = useTheme();          // 'dark' | 'light'
-  const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 769);
 
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 769);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
   const isDark = theme === 'dark';
   const filtered = navItems.filter(item => item.roles.includes(user?.role));
   const accent = roleColor[user?.role] || '#6366f1';
