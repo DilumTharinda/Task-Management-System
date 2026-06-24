@@ -1,6 +1,4 @@
-/* ----------------------------------------------------------------------- */
-/*  Spinner core                                                           */
-/* ----------------------------------------------------------------------- */
+
 
 function SpinnerRing({ size }) {
   return (
@@ -25,9 +23,6 @@ function SpinnerRing({ size }) {
   );
 }
 
-/* ----------------------------------------------------------------------- */
-/*  Layout variants                                                         */
-/* ----------------------------------------------------------------------- */
 
 function FullScreenSpinner({ size }) {
   return (
@@ -55,9 +50,6 @@ function CenteredSpinner({ size }) {
   );
 }
 
-/* ----------------------------------------------------------------------- */
-/*  Main component                                                          */
-/* ----------------------------------------------------------------------- */
 
 export default function LoadingSpinner({ size = 40, fullScreen = false, inline = false }) {
   if (fullScreen) return <FullScreenSpinner size={size} />;
