@@ -245,10 +245,12 @@ The system implements three user roles with different levels of access.
 
 **Group 10 — INTE 21323**
 
-DISSANAYAKE D.T. - IM/2023/024 (Team Lead / Backend - Project architecture, API design, Docker setup, deployment, environment config)
-MUTHUKUMARANA N.H. - IM/2023/013 (Backend Developer — Task CRUD, middleware, error handling)
-SATHSARANI K.G.A.S. - IM/2023/031 (Frontend Developer - React pages, routing, UI/UX, authentication)
-VITHANACHCHI B.K.Y.M. - IM/2023/034 ( Database management - ER diagram, MySQL schema, migrations)
+| Name | Student ID | Role & Contributions |
+|------|-----------|----------------------|
+| **DISSANAYAKE D.T.** | IM/2023/024 |  Team Lead / Backend — Project architecture, API design, Docker setup, deployment, environment config |
+| **MUTHUKUMARANA N.H.** | IM/2023/013 |  Backend Developer — Task CRUD, middleware, error handling |
+| **SATHSARANI K.G.A.S.** | IM/2023/031 |  Frontend Developer — React pages, routing, UI/UX, authentication |
+| **VITHANACHCHI B.K.Y.M.** | IM/2023/034 |  Database Management — ER diagram, MySQL schema, migrations |
 
 ---
 
